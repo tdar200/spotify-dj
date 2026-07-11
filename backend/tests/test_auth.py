@@ -47,3 +47,62 @@ def test_save_tokens_overwrites_single_row(conn):
 
 def test_load_tokens_empty(conn):
     assert auth.load_tokens(conn) is None
+
+
+import httpx
+import pytest
+import respx
+
+
+@respx.mock
+async def test_exchange_code_posts_pkce_form():
+    route = respx.post(auth.TOKEN_URL).mock(
+        return_value=httpx.Response(
+            200,
+            json={"access_token": "acc", "refresh_token": "ref", "expires_in": 3600},
+        )
+    )
+    data = await auth.exchange_code("cid", "http://127.0.0.1:8765/auth/callback", "the-code", "the-verifier")
+    assert data["access_token"] == "acc"
+    body = route.calls.last.request.content.decode()
+    assert "grant_type=authorization_code" in body
+    assert "code=the-code" in body
+    assert "code_verifier=the-verifier" in body
+    assert "client_id=cid" in body
+
+
+async def test_get_valid_token_raises_when_not_connected(conn):
+    with pytest.raises(auth.NotConnectedError):
+        await auth.get_valid_access_token(conn, "cid")
+
+
+async def test_get_valid_token_returns_fresh_without_network(conn):
+    auth.save_tokens(conn, "acc", "ref", 3600)  # expires far in the future
+    assert await auth.get_valid_access_token(conn, "cid") == "acc"
+
+
+@respx.mock
+async def test_get_valid_token_refreshes_expired(conn):
+    auth.save_tokens(conn, "old", "ref", -10)  # already expired
+    route = respx.post(auth.TOKEN_URL).mock(
+        return_value=httpx.Response(
+            200, json={"access_token": "new", "expires_in": 3600}
+        )
+    )
+    assert await auth.get_valid_access_token(conn, "cid") == "new"
+    body = route.calls.last.request.content.decode()
+    assert "grant_type=refresh_token" in body
+    row = auth.load_tokens(conn)
+    assert row["access_token"] == "new"
+    assert row["refresh_token"] == "ref"  # kept when Spotify omits a new one
+
+
+@respx.mock
+async def test_refresh_failure_clears_tokens(conn):
+    auth.save_tokens(conn, "old", "bad-ref", -10)
+    respx.post(auth.TOKEN_URL).mock(
+        return_value=httpx.Response(400, json={"error": "invalid_grant"})
+    )
+    with pytest.raises(auth.NotConnectedError):
+        await auth.get_valid_access_token(conn, "cid")
+    assert auth.load_tokens(conn) is None  # /auth/status now reports disconnected

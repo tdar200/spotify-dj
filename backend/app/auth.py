@@ -1,5 +1,6 @@
 import base64
 import hashlib
+import httpx
 import secrets
 import sqlite3
 import time
@@ -59,3 +60,60 @@ def save_tokens(
 
 def load_tokens(conn: sqlite3.Connection) -> sqlite3.Row | None:
     return conn.execute("SELECT * FROM tokens WHERE id = 1").fetchone()
+
+
+async def exchange_code(
+    client_id: str, redirect_uri: str, code: str, verifier: str
+) -> dict:
+    async with httpx.AsyncClient() as client:
+        resp = await client.post(
+            TOKEN_URL,
+            data={
+                "grant_type": "authorization_code",
+                "code": code,
+                "redirect_uri": redirect_uri,
+                "client_id": client_id,
+                "code_verifier": verifier,
+            },
+        )
+        resp.raise_for_status()
+        return resp.json()
+
+
+async def refresh_access_token(client_id: str, refresh_token: str) -> dict:
+    async with httpx.AsyncClient() as client:
+        resp = await client.post(
+            TOKEN_URL,
+            data={
+                "grant_type": "refresh_token",
+                "refresh_token": refresh_token,
+                "client_id": client_id,
+            },
+        )
+        resp.raise_for_status()
+        return resp.json()
+
+
+async def get_valid_access_token(conn: sqlite3.Connection, client_id: str) -> str:
+    row = load_tokens(conn)
+    if row is None:
+        raise NotConnectedError()
+    if row["expires_at"] - time.time() > 60:
+        return row["access_token"]
+    try:
+        data = await refresh_access_token(client_id, row["refresh_token"])
+    except httpx.HTTPStatusError as e:
+        if e.response.status_code in (400, 401):
+            # Grant revoked/invalid: forget it so /auth/status reports
+            # disconnected and the dashboard offers to reconnect.
+            conn.execute("DELETE FROM tokens")
+            conn.commit()
+            raise NotConnectedError() from e
+        raise
+    save_tokens(
+        conn,
+        data["access_token"],
+        data.get("refresh_token", row["refresh_token"]),
+        data["expires_in"],
+    )
+    return data["access_token"]
