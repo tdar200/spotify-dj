@@ -6,7 +6,7 @@ from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import RedirectResponse
 
-from . import auth, db, ingest
+from . import auth, db, ingest, stats
 from .config import get_settings
 
 
@@ -69,3 +69,17 @@ async def callback(request: Request, code: str):
 @app.get("/auth/status")
 async def status(request: Request):
     return {"connected": auth.load_tokens(request.app.state.conn) is not None}
+
+
+@app.get("/stats/recent")
+async def stats_recent(request: Request, limit: int = 50):
+    return stats.recent_plays(request.app.state.conn, limit=limit)
+
+
+@app.get("/stats/top")
+async def stats_top(request: Request, days: int = 30):
+    conn = request.app.state.conn
+    return {
+        "tracks": stats.top_tracks(conn, days=days),
+        "artists": stats.top_artists(conn, days=days),
+    }
