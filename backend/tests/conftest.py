@@ -10,3 +10,12 @@ def client(tmp_path, monkeypatch):
 
     with TestClient(app) as tc:
         yield tc
+
+
+@pytest.fixture
+def conn(tmp_path):
+    from app import db
+
+    c = db.connect(tmp_path / "test.sqlite3")
+    yield c
+    c.close()
