@@ -1,4 +1,5 @@
 import asyncio
+import contextlib
 from contextlib import asynccontextmanager
 
 from fastapi import FastAPI, Request
@@ -20,6 +21,8 @@ async def lifespan(app: FastAPI):
     )
     yield
     worker.cancel()
+    with contextlib.suppress(asyncio.CancelledError):
+        await worker
     app.state.conn.close()
 
 
