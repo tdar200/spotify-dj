@@ -1,15 +1,33 @@
 # Spotify DJ — Design
 
 **Date:** 2026-07-12
-**Status:** Approved by user (design conversation, 2026-07-12)
+**Status:** Approved by user (design conversation, 2026-07-12); revised same
+day to hybrid scope after prior-art review.
 
 ## What this is
 
-A personal, local-first Spotify companion: a listening-stats dashboard plus a
-self-trained "DJ" that discovers music, generates playlists, and live-DJs the
-user's Spotify session based on a taste model built from their own listening
-history. Single user (Spotify Premium, app in Spotify development mode — up to
-25 allowlisted users, no approval process).
+A personal, local-first Spotify DJ: a self-trained recommendation engine that
+live-DJs the user's Spotify session (auto-queue + learn from skips), with a
+discovery feed and a minimal stats view. Single user (Spotify Premium, app in
+Spotify development mode — up to 25 allowlisted users, no approval process).
+
+**Hybrid scope (build vs buy).** Prior-art review found the stats and
+weekly-discovery problems already solved, and the live learning DJ unsolved:
+
+- [your_spotify](https://github.com/Yooooomi/your_spotify) — mature
+  self-hosted Spotify stats dashboard. We do NOT rebuild rich stats; our
+  dashboard keeps only a minimal stats page over our own `plays` table.
+- [ListenBrainz](https://listenbrainz.org) — connects to the user's Spotify
+  account, ingests listening history, and pushes free Weekly Exploration /
+  Daily Jams playlists back into Spotify. This replaces our standalone
+  "generated playlists" feature; the user connects it once (setup step). Its
+  open APIs additionally serve as a candidate source for our ranker.
+- No existing tool watches live Spotify playback, auto-queues, and trains a
+  personal model from skip/completion feedback ([Deej-AI](https://github.com/teticio/Deej-AI)
+  is playlist-only and predates the API lockdown). That loop is what we build.
+
+We still run our own ingest worker (SQLite) — it is the ML training corpus
+and stays fully local, independent of the external services.
 
 ## Hard constraint driving the design
 
@@ -104,12 +122,13 @@ Next.js dashboard (:3001)  <->  FastAPI backend (:8765)  <->  Spotify Web API
   fallback. Golden tests pin scoring behavior so retraining cannot silently
   change recommendations.
 
-**DJ engine** — three outputs over the same taste engine:
+**DJ engine** — outputs over the same taste engine:
 - `GET /discover`: ranked feed of candidates with per-track "why" (top
   contributing features).
-- `POST /playlists/generate`: builds a playlist from a vibe spec (seed
-  artists/tags, size), creates it in the user's Spotify account via
-  `POST /me/playlists` + add items.
+- `POST /playlists/from-feed`: saves selected/top feed picks as a playlist in
+  the user's Spotify account (`POST /me/playlists` + add items). Vibe-based
+  standalone generation is out of scope — ListenBrainz's weekly playlists
+  cover that.
 - Live DJ session: start/stop; watches playback, keeps 1–2 ranked tracks in
   the Spotify queue, records skip (<~40% listened) / completion as labeled
   feedback. On repeated API errors it stops queueing and reports, rather than
@@ -117,12 +136,13 @@ Next.js dashboard (:3001)  <->  FastAPI backend (:8765)  <->  Spotify Web API
 
 ### Next.js frontend (App Router, TypeScript, Tailwind + shadcn/ui)
 
-- **Stats**: top tracks/artists per time range, listening-history charts from
-  the local `plays` table.
 - **Discover**: feed with play/queue buttons and 👍 / 👎 / "more like this" —
-  every interaction is a labeled training example.
-- **Playlists**: vibe picker → generated playlist preview → save to Spotify.
+  every interaction is a labeled training example; "save picks as playlist"
+  button.
 - **DJ panel**: now playing, next up, why-this-pick, session start/stop.
+- **Stats (minimal)**: one page — recent plays and top artists/tracks from
+  the local `plays` table, mostly to verify ingest is healthy. Rich stats are
+  your_spotify's job if the user ever wants them.
 
 ### SQLite schema (tables)
 
@@ -131,10 +151,11 @@ Next.js dashboard (:3001)  <->  FastAPI backend (:8765)  <->  Spotify Web API
 
 ## Build phases
 
-1. **Foundation** — OAuth, Spotify client, ingest worker, stats dashboard.
-   Usable immediately; training data starts accumulating.
+1. **Foundation** — OAuth, Spotify client, ingest worker, minimal stats page.
+   Training data starts accumulating. (User also connects ListenBrainz to
+   Spotify — free weekly discovery playlists start arriving with zero code.)
 2. **Discovery** — enrichment, taste profile, heuristic ranker, discover feed,
-   playlist generation.
+   save-picks-as-playlist.
 3. **Live DJ** — playback watcher, auto-queue, skip/complete feedback loop.
 4. **Learned ranker** — LightGBM on feedback; optional audio-embedding
    feature (Deezer/iTunes previews + Essentia/CLAP) if wanted later.
@@ -167,9 +188,14 @@ Each phase ships something usable and gets its own implementation plan.
    needed in the app, but Spotify still issues one; keep it out of git).
 2. Get a free Last.fm API key.
 3. Put both in `.env` (git-ignored).
+4. Create a ListenBrainz account and connect it to Spotify (listening-history
+   import + playlist export) — this delivers the weekly discovery playlists
+   and improves ListenBrainz's API recommendations for us.
 
 ## Out of scope
 
+- Rich stats dashboards (use your_spotify) and standalone vibe-based playlist
+  generation (use ListenBrainz weekly playlists).
 - Multi-user support, deployment, HTTPS, hosting.
 - Spotify audio playback inside the dashboard (Web Playback SDK) — playback
   happens on the user's normal Spotify devices; the dashboard only controls.
