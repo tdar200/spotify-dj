@@ -52,10 +52,15 @@ async def login(request: Request):
 
 
 @app.get("/auth/callback")
-async def callback(request: Request, code: str):
+async def callback(
+    request: Request, code: str | None = None, error: str | None = None
+):
     s = request.app.state.settings
+    verifier = request.app.state.code_verifier
+    if code is None or error is not None or verifier is None:
+        return RedirectResponse(f"{s.frontend_origin}?auth_error=1")
     data = await auth.exchange_code(
-        s.spotify_client_id, s.redirect_uri, code, request.app.state.code_verifier
+        s.spotify_client_id, s.redirect_uri, code, verifier
     )
     auth.save_tokens(
         request.app.state.conn,

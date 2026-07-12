@@ -29,3 +29,18 @@ def test_callback_exchanges_and_connects(client):
     assert r.status_code == 307
     assert r.headers["location"] == "http://localhost:3001"
     assert client.get("/auth/status").json() == {"connected": True}
+
+
+def test_callback_denied_redirects_home(client):
+    r = client.get(
+        "/auth/callback", params={"error": "access_denied"}, follow_redirects=False
+    )
+    assert r.status_code == 307
+    assert r.headers["location"] == "http://localhost:3001?auth_error=1"
+    assert client.get("/auth/status").json() == {"connected": False}
+
+
+def test_callback_without_login_redirects_home(client):
+    r = client.get("/auth/callback", params={"code": "abc"}, follow_redirects=False)
+    assert r.status_code == 307
+    assert r.headers["location"] == "http://localhost:3001?auth_error=1"
