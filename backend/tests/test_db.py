@@ -1,3 +1,6 @@
+import pytest
+import sqlite3
+
 from app import db
 
 
@@ -30,10 +33,29 @@ def test_duplicate_play_ignored(conn):
 
 
 def test_tokens_single_row_constraint(conn):
-    import sqlite3
-
-    import pytest
-
     conn.execute("INSERT INTO tokens VALUES (1, 'a', 'r', 0)")
     with pytest.raises(sqlite3.IntegrityError):
         conn.execute("INSERT INTO tokens VALUES (2, 'b', 'r', 0)")
+
+
+def test_phase2_tables_exist(tmp_path):
+    conn = db.connect(tmp_path / "p2.sqlite3")
+    names = {
+        r["name"]
+        for r in conn.execute("SELECT name FROM sqlite_master WHERE type='table'")
+    }
+    assert {
+        "artists", "tags", "similar_edges", "enrichment_fetches",
+        "candidates", "feedback",
+    } <= names
+    conn.close()
+
+
+def test_feedback_verdict_constrained(tmp_path):
+    conn = db.connect(tmp_path / "p2b.sqlite3")
+    with pytest.raises(sqlite3.IntegrityError):
+        conn.execute(
+            "INSERT INTO feedback (track_id, verdict, created_at) "
+            "VALUES ('t1', 'meh', '2026-07-18T00:00:00Z')"
+        )
+    conn.close()
