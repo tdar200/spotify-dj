@@ -57,6 +57,15 @@ async def test_search_track_builds_field_query():
 
 
 @respx.mock
+async def test_search_track_artist_only_query():
+    route = respx.get("https://api.spotify.com/v1/search").mock(
+        return_value=httpx.Response(200, json={"tracks": {"items": []}})
+    )
+    await spotify.search_track("tok", "Dave", "")
+    assert route.calls[0].request.url.params["q"] == 'artist:"Dave"'
+
+
+@respx.mock
 async def test_top_artists_and_tracks_params():
     respx.get("https://api.spotify.com/v1/me/top/artists").mock(
         return_value=httpx.Response(200, json={"items": [{"name": "Atif Aslam"}]})

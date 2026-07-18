@@ -70,7 +70,7 @@ async def get_saved_tracks(
 
 
 async def search_track(access_token: str, artist: str, title: str) -> list[dict]:
-    q = f'artist:"{artist}" track:"{title}"'
+    q = f'artist:"{artist}" track:"{title}"' if title else f'artist:"{artist}"'
     resp = await _request(
         "GET", "/search", access_token,
         params={"q": q, "type": "track", "limit": 5},
