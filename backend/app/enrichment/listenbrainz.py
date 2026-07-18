@@ -44,4 +44,4 @@ async def get_similar_artists(mbid: str, limit: int = 50) -> list[dict]:
     if not rows:
         return []
     top = max(r["score"] for r in rows) or 1
-    return [{"name": r["artist_name"], "match": r["score"] / top} for r in rows]
+    return [{"name": r["name"], "match": r["score"] / top} for r in rows]

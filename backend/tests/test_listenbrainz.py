@@ -38,8 +38,8 @@ async def test_similar_artists_scores_normalized():
         return_value=Response(
             200,
             json=[
-                {"artist_name": "Dave", "score": 200},
-                {"artist_name": "Aitch", "score": 50},
+                {"name": "Dave", "score": 200},
+                {"name": "Aitch", "score": 50},
             ],
         )
     )
