@@ -92,8 +92,10 @@ Explainable linear score per candidate:
 ### Frontend
 
 - **Discover page** (alongside existing stats page): ranked feed with
-  artwork, "why this" line, play/queue buttons (Spotify deep links + existing
-  queue endpoint scope), 👍 / 👎 / "more like this" buttons, checkbox
+  artwork, "why this" line, an open-in-Spotify deep link plus a queue button
+  backed by a new `POST /playback/queue` backend proxy (scope
+  `user-modify-playback-state` is already granted), 👍 / 👎 / "more like
+  this" buttons, checkbox
   selection + "Save as playlist".
 - Minimal component tests for the feedback controls only.
 
