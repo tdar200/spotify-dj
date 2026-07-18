@@ -82,7 +82,7 @@ async def _enrich_artist_seed(conn, api_key: str, key: str, name: str, now_iso: 
 
 async def _resolve_and_insert(
     conn, access_token: str, artist: str, title: str,
-    seed: str, source: str, weight: float, now_iso: str,
+    seed: str, source: str, weight: float, now_iso: str, api_key: str = "",
 ) -> bool:
     items = await spotify.search_track(access_token, artist, title)
     for item in items:
@@ -104,6 +104,15 @@ async def _resolve_and_insert(
                 (item["id"], seed, source, weight, now_iso),
             )
             conn.commit()
+            if cur.rowcount > 0 and api_key:
+                cand_name = item["artists"][0]["name"]
+                cand_key = norm_key(cand_name)
+                if not cache.was_fetched(conn, "lastfm", "artist", cand_key):
+                    cache.store_tags(
+                        conn, "lastfm", "artist", cand_key,
+                        await lastfm.get_artist_top_tags(api_key, cand_name),
+                    )
+                    cache.mark_fetched(conn, "lastfm", "artist", cand_key, now_iso)
             return cur.rowcount > 0
     logger.info("no spotify match for %s — %s; skipping", artist, title)
     return False
@@ -174,6 +183,7 @@ async def refresh_candidates(
             if await _resolve_and_insert(
                 conn, access_token, e["to_name"], "",
                 f"artist:{key}", e["source"], e["weight"], now_iso,
+                settings.lastfm_api_key,
             ):
                 known.add(norm_key(e["to_name"]))
                 inserted += 1
@@ -186,6 +196,7 @@ async def refresh_candidates(
             if await _resolve_and_insert(
                 conn, access_token, e["to_artist"], e["to_name"],
                 f"track:{tkey}", e["source"], e["weight"], now_iso,
+                settings.lastfm_api_key,
             ):
                 known.add(norm_key(e["to_artist"], e["to_name"]))
                 inserted += 1

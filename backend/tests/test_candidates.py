@@ -1,3 +1,4 @@
+import dataclasses
 import datetime as dt
 
 import respx
@@ -70,6 +71,48 @@ async def test_refresh_inserts_matched_candidate(conn, monkeypatch):
     assert row["seed"] == "artist:central cee"
     assert row["source"] == "lastfm"
     assert cache.was_fetched(conn, "lastfm", "artist", "central cee")
+    # resolved candidate artist's tags must also be enriched, or tag_overlap
+    # in the ranker is dead for every candidate.
+    assert cache.get_tags(conn, "artist", "dave")
+    assert cache.was_fetched(conn, "lastfm", "artist", "dave")
+
+
+@respx.mock
+async def test_refresh_no_api_key_never_marks_candidate_fetched(conn, monkeypatch):
+    async def no_sleep(s):
+        pass
+    import asyncio as aio
+    monkeypatch.setattr(aio, "sleep", no_sleep)
+    seed_history(conn)
+    mock_spotify_bootstrap()
+    empty_key_settings = dataclasses.replace(SETTINGS, lastfm_api_key="")
+    # Pre-seed similar-artist edges (as if a prior run with a real key had
+    # populated them) and mark the seed already fetched so the empty-key
+    # run doesn't overwrite them via get_similar_artists() -> [].
+    cache.store_edges(
+        conn, "lastfm", "artist", "central cee",
+        [{"name": "Dave", "match": 0.9}],
+    )
+    cache.mark_fetched(conn, "lastfm", "artist", "central cee", "2020-01-01T00:00:00.000Z")
+    cache.mark_fetched(conn, "listenbrainz", "artist", "central cee", "2020-01-01T00:00:00.000Z")
+    lastfm_route = respx.get("https://ws.audioscrobbler.com/2.0/").mock(
+        return_value=Response(200, json={})
+    )
+    respx.get("https://musicbrainz.org/ws/2/artist").mock(
+        return_value=Response(200, json={"artists": []})
+    )
+    respx.get(f"{SPOTIFY}/search").mock(
+        return_value=Response(200, json={"tracks": {"items": [{
+            "id": "t9", "name": "Sprinter", "duration_ms": 200000,
+            "album": {"name": "Alb"},
+            "artists": [{"id": "a9", "name": "Dave"}],
+        }]}})
+    )
+    n = await candidates.refresh_candidates(conn, empty_key_settings, "tok", NOW)
+    assert n == 1
+    assert lastfm_route.call_count == 0
+    assert cache.was_fetched(conn, "lastfm", "artist", "dave") is False
+    assert cache.get_tags(conn, "artist", "dave") == {}
 
 
 @respx.mock
