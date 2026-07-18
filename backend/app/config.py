@@ -13,6 +13,7 @@ class Settings:
     redirect_uri: str
     db_path: Path
     frontend_origin: str
+    lastfm_api_key: str
 
 
 def get_settings() -> Settings:
@@ -23,4 +24,5 @@ def get_settings() -> Settings:
         ),
         db_path=Path(os.environ.get("DB_PATH", "spotify_dj.sqlite3")),
         frontend_origin=os.environ.get("FRONTEND_ORIGIN", "http://localhost:3001"),
+        lastfm_api_key=os.environ.get("LASTFM_API_KEY", ""),
     )

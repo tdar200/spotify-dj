@@ -18,3 +18,8 @@ def test_env_overrides(monkeypatch):
     s = get_settings()
     assert s.spotify_client_id == "abc123"
     assert s.db_path == Path("/tmp/x.sqlite3")
+
+
+def test_lastfm_key_defaults_empty(monkeypatch):
+    monkeypatch.delenv("LASTFM_API_KEY", raising=False)
+    assert get_settings().lastfm_api_key == ""
