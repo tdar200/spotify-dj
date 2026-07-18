@@ -7,6 +7,7 @@ from httpx import Response
 from app.config import Settings
 from app.enrichment import cache
 from app.taste import candidates
+from app.taste.normalize import norm_key
 
 NOW = dt.datetime(2026, 7, 18, tzinfo=dt.timezone.utc).timestamp()
 SETTINGS = Settings(
@@ -113,6 +114,44 @@ async def test_refresh_no_api_key_never_marks_candidate_fetched(conn, monkeypatc
     assert lastfm_route.call_count == 0
     assert cache.was_fetched(conn, "lastfm", "artist", "dave") is False
     assert cache.get_tags(conn, "artist", "dave") == {}
+
+
+@respx.mock
+async def test_refresh_empty_key_does_not_poison_seed_cache(conn, monkeypatch):
+    async def no_sleep(s):
+        pass
+    import asyncio as aio
+    monkeypatch.setattr(aio, "sleep", no_sleep)
+    seed_history(conn)
+    empty_key_settings = dataclasses.replace(SETTINGS, lastfm_api_key="")
+    respx.get(f"{SPOTIFY}/me/top/artists").mock(
+        return_value=Response(200, json={"items": [{"name": "Central Cee"}]})
+    )
+    respx.get(f"{SPOTIFY}/me/top/tracks").mock(
+        return_value=Response(200, json={"items": [{
+            "name": "Sprinter",
+            "artists": [{"name": "Central Cee"}],
+        }]})
+    )
+    respx.get(f"{SPOTIFY}/me/tracks").mock(
+        return_value=Response(200, json={"items": []})
+    )
+    lastfm_route = respx.get("https://ws.audioscrobbler.com/2.0/").mock(
+        return_value=Response(200, json={})
+    )
+    respx.get("https://musicbrainz.org/ws/2/artist").mock(
+        return_value=Response(200, json={"artists": []})
+    )
+    respx.get(f"{SPOTIFY}/search").mock(
+        return_value=Response(200, json={"tracks": {"items": []}})
+    )
+    await candidates.refresh_candidates(conn, empty_key_settings, "tok", NOW)
+    assert lastfm_route.call_count == 0
+    assert cache.was_fetched(conn, "lastfm", "artist", "central cee") is False
+    assert cache.was_fetched(
+        conn, "lastfm", "track", norm_key("Central Cee", "Sprinter")
+    ) is False
+    assert cache.was_fetched(conn, "listenbrainz", "artist", "central cee") is True
 
 
 @respx.mock

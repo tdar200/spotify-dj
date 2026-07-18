@@ -62,7 +62,7 @@ async def _bootstrap(access_token: str) -> tuple[list[str], list[dict], list[str
 
 
 async def _enrich_artist_seed(conn, api_key: str, key: str, name: str, now_iso: str):
-    if not cache.was_fetched(conn, "lastfm", "artist", key):
+    if api_key and not cache.was_fetched(conn, "lastfm", "artist", key):
         cache.store_edges(conn, "lastfm", "artist", key,
                           await lastfm.get_similar_artists(api_key, name))
         cache.store_tags(conn, "lastfm", "artist", key,
@@ -164,7 +164,7 @@ async def refresh_candidates(
 
     for t in top_tracks[:max_track_seeds]:
         tkey = norm_key(t["artist"], t["title"])
-        if not cache.was_fetched(conn, "lastfm", "track", tkey):
+        if settings.lastfm_api_key and not cache.was_fetched(conn, "lastfm", "track", tkey):
             cache.store_edges(
                 conn, "lastfm", "track", tkey,
                 await lastfm.get_similar_tracks(
