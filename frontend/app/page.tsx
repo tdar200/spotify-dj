@@ -36,6 +36,9 @@ export default function Home() {
   return (
     <main className="mx-auto max-w-3xl p-8 space-y-8">
       <h1 className="text-2xl font-bold">Spotify DJ — Stats</h1>
+      <p>
+        <a href="/discover" className="text-sm underline">Discover →</a>
+      </p>
 
       {error && <p className="text-red-500">{error}</p>}
 
